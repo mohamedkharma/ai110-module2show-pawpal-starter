@@ -4,6 +4,11 @@
 
 **a. Initial design**
 
+* Three core actions 
+1. Add owner and pet information so the app knows who the care plan is for.
+2. Create and update pet care tasks such as feeding, walks, medicine, and grooming.
+3. View a daily care plan that shows which tasks should be done and in what order.
+
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
