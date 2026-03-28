@@ -1,203 +1,146 @@
 """
 PawPal logic layer.
 
-This module contains the backend classes for representing owners, pets,
-tasks, and the scheduling system that will generate a daily care plan.
+This module contains the core backend classes for tasks, pets, owners,
+and scheduling.
 """
 
 from dataclasses import dataclass, field
-from datetime import date as _date
-from typing import Dict, List, Optional
-
-
-@dataclass
-class Owner:
-    """Represents the pet owner using the app."""
-
-    name: str
-    available_minutes: int
-    # Keys: "preferred_time" ("morning"/"afternoon"/"evening"),
-    #       "avoid_category" (list of category strings), etc.
-    preferences: Dict[str, object] = field(default_factory=dict)
-
-    def update_preferences(self, preferences: Dict[str, object]) -> None:
-        """Replace the owner's scheduling preferences."""
-        self.preferences = preferences
-
-
-@dataclass
-class Pet:
-    """Represents a pet that needs care tasks."""
-
-    name: str
-    species: str
-    age: Optional[int] = None
-    notes: str = ""
-
-    def get_profile_summary(self) -> str:
-        """Return a short summary of the pet."""
-        age_str = f", age {self.age}" if self.age is not None else ""
-        notes_str = f" ({self.notes})" if self.notes else ""
-        return f"{self.name} the {self.species}{age_str}{notes_str}"
+from typing import List
 
 
 @dataclass
 class Task:
-    """Represents a care task that may be scheduled."""
+    """Represents a single pet care activity."""
 
-    title: str
-    duration_minutes: int
-    priority: str  # "low", "medium", "high"
-    category: str = "general"
-    notes: str = ""
-    is_required: bool = True
+    description: str
+    time_minutes: int
+    frequency: str
+    completed: bool = False
 
-    def is_high_priority(self) -> bool:
-        """Return whether this task should be treated as high priority."""
-        return self.priority == "high"
+    def mark_complete(self) -> None:
+        """Mark the task as completed."""
+        self.completed = True
 
-    def fits_within(self, available_minutes: int) -> bool:
-        """Return whether the task fits within a time budget."""
-        return self.duration_minutes <= available_minutes
+    def mark_incomplete(self) -> None:
+        """Mark the task as not completed."""
+        self.completed = False
 
-
-@dataclass
-class PlanItem:
-    """Represents one scheduled task inside a daily plan.
-
-    scheduled_time uses "HH:MM" 24-hour format (e.g. "08:30").
-    """
-
-    task: Task
-    scheduled_time: str  # "HH:MM" 24-hour, e.g. "08:30"
-    reason: str = ""
-
-    def get_display_text(self) -> str:
-        """Return a UI-friendly description of this plan item."""
-        return (
-            f"{self.scheduled_time} — {self.task.title} "
-            f"({self.task.duration_minutes} min) [{self.task.priority}]"
-            + (f"\n  {self.reason}" if self.reason else "")
-        )
+    def is_due_today(self) -> bool:
+        """Return whether the task should be included in today's plan."""
+        return not self.completed
 
 
 @dataclass
-class DailyPlan:
-    """Represents the final set of scheduled tasks for a day."""
+class Pet:
+    """Stores pet details and the tasks assigned to that pet."""
 
-    owner: Owner
-    pet: Pet
-    date: str = field(default_factory=lambda: _date.today().isoformat())
-    items: List[PlanItem] = field(default_factory=list)
-    unscheduled_tasks: List[Task] = field(default_factory=list)
+    name: str
+    species: str
+    age: int = 0
+    tasks: List[Task] = field(default_factory=list)
 
-    def add_item(self, item: PlanItem) -> None:
-        """Add a scheduled item to the plan."""
-        self.items.append(item)
+    def add_task(self, task: Task) -> None:
+        """Add a new task to this pet."""
+        self.tasks.append(task)
 
-    def add_unscheduled_task(self, task: Task) -> None:
-        """Track a task that could not be scheduled."""
-        self.unscheduled_tasks.append(task)
+    def remove_task(self, description: str) -> bool:
+        """Remove the first task with a matching description."""
+        for index, task in enumerate(self.tasks):
+            if task.description == description:
+                del self.tasks[index]
+                return True
+        return False
 
-    def get_total_minutes(self) -> int:
-        """Return total scheduled minutes, computed from items."""
-        return sum(item.task.duration_minutes for item in self.items)
+    def get_pending_tasks(self) -> List[Task]:
+        """Return tasks that are not yet completed."""
+        return [task for task in self.tasks if not task.completed]
 
-    def get_summary(self) -> str:
-        """Return a summary of the plan for display."""
-        lines = [
-            f"Daily plan for {self.pet.name} — {self.date}",
-            f"Owner: {self.owner.name} | Total time: {self.get_total_minutes()} min",
-            "",
-        ]
-        if self.items:
-            lines.append("Scheduled:")
-            for item in self.items:
-                lines.append(f"  {item.get_display_text()}")
-        if self.unscheduled_tasks:
-            lines.append("\nNot scheduled (time or priority):")
-            for task in self.unscheduled_tasks:
-                lines.append(f"  - {task.title} ({task.duration_minutes} min, {task.priority})")
-        return "\n".join(lines)
+    def get_completed_tasks(self) -> List[Task]:
+        """Return tasks that have been completed."""
+        return [task for task in self.tasks if task.completed]
 
 
-_PRIORITY_RANK = {"high": 3, "medium": 2, "low": 1}
-# Starting time for the first scheduled task (minutes from midnight)
-_START_MINUTE = 8 * 60  # 08:00
+@dataclass
+class Owner:
+    """Stores owner details and manages multiple pets."""
+
+    name: str
+    pets: List[Pet] = field(default_factory=list)
+
+    def add_pet(self, pet: Pet) -> None:
+        """Add a pet to the owner's list."""
+        self.pets.append(pet)
+
+    def remove_pet(self, pet_name: str) -> bool:
+        """Remove the first pet with a matching name."""
+        for index, pet in enumerate(self.pets):
+            if pet.name == pet_name:
+                del self.pets[index]
+                return True
+        return False
+
+    def get_pet(self, pet_name: str) -> Pet | None:
+        """Return a pet by name if it exists."""
+        for pet in self.pets:
+            if pet.name == pet_name:
+                return pet
+        return None
+
+    def get_all_tasks(self) -> List[Task]:
+        """Return every task across all pets."""
+        all_tasks: List[Task] = []
+        for pet in self.pets:
+            all_tasks.extend(pet.tasks)
+        return all_tasks
+
+    def get_all_pending_tasks(self) -> List[Task]:
+        """Return all incomplete tasks across all pets."""
+        pending_tasks: List[Task] = []
+        for pet in self.pets:
+            pending_tasks.extend(pet.get_pending_tasks())
+        return pending_tasks
 
 
-def _minutes_to_hhmm(minutes: int) -> str:
-    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+class Scheduler:
+    """Retrieves, organizes, and manages tasks across an owner's pets."""
 
-
-class PawPalScheduler:
-    """Builds a daily care plan from owner, pet, and task information."""
-
-    def __init__(self, owner: Owner, pet: Pet, tasks: List[Task]) -> None:
+    def __init__(self, owner: Owner) -> None:
+        """Store the owner whose pets and tasks will be scheduled."""
         self.owner = owner
-        self.pet = pet
-        self.tasks = tasks
-        self.last_plan: Optional[DailyPlan] = None
 
-    def generate_daily_plan(self) -> DailyPlan:
-        """Create a daily plan based on time, priority, and preferences.
+    def get_all_tasks(self) -> List[Task]:
+        """Retrieve every task from the owner's pets."""
+        return self.owner.get_all_tasks()
 
-        Order of operations: sort by priority first, then greedily pick
-        tasks that fit in the remaining time budget. This ensures a
-        high-priority short task is never dropped in favour of a lower-
-        priority long one that happened to be evaluated first.
-        """
-        plan = DailyPlan(owner=self.owner, pet=self.pet)
-        sorted_tasks = self.sort_tasks_by_priority()
+    def get_pending_tasks(self) -> List[Task]:
+        """Retrieve all incomplete tasks from the owner's pets."""
+        return self.owner.get_all_pending_tasks()
 
-        remaining = self.owner.available_minutes
-        cursor = _START_MINUTE  # rolling clock pointer (minutes from midnight)
+    def sort_tasks_by_time(self) -> List[Task]:
+        """Return pending tasks ordered by shortest time first."""
+        return sorted(self.get_pending_tasks(), key=lambda task: task.time_minutes)
 
-        for task in sorted_tasks:
-            if task.fits_within(remaining):
-                reason = self.explain_task_choice(task)
-                item = PlanItem(
-                    task=task,
-                    scheduled_time=_minutes_to_hhmm(cursor),
-                    reason=reason,
-                )
-                plan.add_item(item)
-                remaining -= task.duration_minutes
-                cursor += task.duration_minutes
-            else:
-                plan.add_unscheduled_task(task)
+    def sort_tasks_by_pet(self) -> List[tuple[str, Task]]:
+        """Return pending tasks grouped into pet-task pairs."""
+        pet_task_pairs: List[tuple[str, Task]] = []
+        for pet in self.owner.pets:
+            for task in pet.get_pending_tasks():
+                pet_task_pairs.append((pet.name, task))
+        return pet_task_pairs
 
-        self.last_plan = plan
-        return plan
+    def build_daily_task_list(self) -> List[Task]:
+        """Build a simple daily list of tasks that are due today."""
+        return [task for task in self.get_pending_tasks() if task.is_due_today()]
 
-    def sort_tasks_by_priority(self) -> List[Task]:
-        """Return tasks ordered high → medium → low, required tasks first."""
-        return sorted(
-            self.tasks,
-            key=lambda t: (_PRIORITY_RANK.get(t.priority, 0), t.is_required),
-            reverse=True,
-        )
+    def mark_task_complete(self, pet_name: str, description: str) -> bool:
+        """Mark a matching task as complete for a specific pet."""
+        pet = self.owner.get_pet(pet_name)
+        if pet is None:
+            return False
 
-    def filter_tasks_by_time(self, available_minutes: int) -> List[Task]:
-        """Return a greedy subset of tasks (already sorted) that fit the budget."""
-        result: List[Task] = []
-        remaining = available_minutes
-        for task in self.sort_tasks_by_priority():
-            if task.fits_within(remaining):
-                result.append(task)
-                remaining -= task.duration_minutes
-        return result
-
-    def explain_task_choice(self, task: Task) -> str:
-        """Return an explanation for why a task was included in the plan."""
-        parts = []
-        if task.is_required:
-            parts.append("required task")
-        if task.is_high_priority():
-            parts.append("high priority")
-        preferred_time = self.owner.preferences.get("preferred_time")
-        if preferred_time:
-            parts.append(f"owner prefers {preferred_time} care")
-        if not parts:
-            parts.append(f"{task.priority} priority, fits in available time")
-        return "; ".join(parts).capitalize() + "."
+        for task in pet.tasks:
+            if task.description == description:
+                task.mark_complete()
+                return True
+        return False
