@@ -10,6 +10,11 @@
 3. View a daily care plan that shows which tasks should be done and in what order.
 
 - Briefly describe your initial UML design.
+
+For my initial UML design, I chose classes that matched the main parts of the app: the owner, the pet, the care tasks, the daily plan, and the scheduler. I used Owner to store the pet owner’s name, available time, and preferences. I used Pet to store basic pet information like name, species, age, and notes. I used Task to represent each care activity, including its title, duration, priority, category, and whether it is required.
+
+I also included PlanItem, DailyPlan, and PawPalScheduler to handle scheduling. PlanItem represents one scheduled task with a time and a short reason. DailyPlan stores the final schedule, the total planned time, and any tasks that could not be scheduled. PawPalScheduler is responsible for the main scheduling process, such as sorting tasks by priority, checking time limits, building the plan, and explaining why tasks were chosen. This design helped separate the data classes from the class that controls the scheduling logic.
+
 - What classes did you include, and what responsibilities did you assign to each?
 
 **b. Design changes**
